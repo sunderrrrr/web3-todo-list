@@ -19,7 +19,7 @@ contract TodoList {
     event TodoCreated(uint256 indexed id, string text, address indexed owner);
     event TodoToggled(uint256 indexed id, bool isCompleted);
     event TodoDeleted(uint256 indexed id);
-
+    event TodoUpdated(uint256 indexed id);
     function create(string memory _text) public { // мемори - память вызова
         uint256 curId = nextId;
 
@@ -55,7 +55,7 @@ contract TodoList {
         require(!todo.isDeleted, "Already deleted");
         require(todo.owner==msg.sender, "Not ur todo");
 
-        todo.isDeleted = !todo.isDeleted;
+        todo.isDeleted = true;
         emit TodoDeleted(_id);
     }
 
@@ -74,11 +74,20 @@ contract TodoList {
         Todo[] memory result = new Todo[](count);
         uint256 idx = 0;
         for (uint256 i = 1; i < nextId; i++) {
-            if (todos[i].owner == msg.sender && todos[i].isDeleted) {
+            if (todos[i].owner == msg.sender && !todos[i].isDeleted) {
                 result[idx] = todos[i];
                 idx++;
             }
         }
         return result;
+    }
+    function updateText(uint256 _id, string memory _newText) public {
+        Todo storage todo = todos[_id];
+        require(todo.id!=0, "Todo not found");
+        require(todo.owner==msg.sender, "Not ur todo");
+        require(!todo.isDeleted, "Todo already deleted");
+
+        todo.text = _newText;
+        emit TodoUpdated(_id);
     }
 }
