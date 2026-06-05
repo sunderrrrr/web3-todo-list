@@ -2,6 +2,7 @@ pragma solidity ^0.8.20;
 
 interface ITodoToken {
     function mint(address to, uint256 amount) external;
+    function burn(address from, uint256 amount) external;
 }
 
 contract TodoList {
@@ -22,12 +23,14 @@ contract TodoList {
 
     ITodoToken public token;
     uint256 public reward = 10 * 10 ** 18; // 10 токенов
+    uint256 public createCost = 1 * 10 ** 18;// 1 tdk
     // ивенты, аналог логов
     event TodoCreated(uint256 indexed id, string text, address indexed owner);
     event TodoToggled(uint256 indexed id, bool isCompleted);
     event TodoDeleted(uint256 indexed id);
     event TodoUpdated(uint256 indexed id);
-    event RewardPaid(address indexed user, uint256 amount);
+    event RewardPaid(address user, uint256 amount);
+    event TokenBurned(address indexed user, uint256 amount);
 
     constructor(address tokenAddr) {
         token = ITodoToken(tokenAddr);
@@ -35,7 +38,8 @@ contract TodoList {
 
     function create(string memory _text) public { // мемори - память вызова
         uint256 curId = nextId;
-
+        token.burn(msg.sender, createCost);
+        emit TokenBurned(msg.sender, createCost);
         todos[curId] = Todo({
             id: curId,
             text: _text,

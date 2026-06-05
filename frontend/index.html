@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo dApp</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; max-width: 600px; margin: 40px auto; padding: 20px; }
+        button { background: #238636; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #2ea043; }
+        button:disabled { background: #30363d; cursor: not-allowed; }
+        button.danger { background: #da3633; }
+        button.danger:hover { background: #f85149; }
+        input { width: 100%; padding: 10px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #c9d1d9; font-size: 14px; margin-bottom: 10px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin: 10px 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .balance { color: #58a6ff; }
+        .address { color: #8b949e; font-size: 12px; }
+        .todo-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
+        .completed { text-decoration: line-through; color: #484f58; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab { background: #21262d; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+        .tab.active { background: #1f6feb; }
+        .status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+        .status.open { background: #1f6feb22; color: #58a6ff; }
+        .status.done { background: #23863622; color: #3fb950; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 Todo dApp</h1>
+        <div>
+            <button id="connectBtn" onclick="connectWallet()">Connect MetaMask</button>
+            <span id="address" class="address"></span>
+        </div>
+    </div>
+
+    <div id="app" style="display:none">
+        <div class="card">
+            <div>Balance: <span id="balance" class="balance">0</span> TODO</div>
+            <div style="margin-top:10px">
+                <input id="todoInput" placeholder="What needs to be done?" />
+                <button onclick="createTodo()">Create (costs 1 TODO)</button>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="loadTodos()">All</div>
+            <div class="tab" onclick="loadBalances()">Holders</div>
+        </div>
+
+        <div id="content"></div>
+    </div>
+
+    <script>
+        // Конфигурация
+        const TODO_ADDR = '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9';
+        const TOKEN_ADDR = '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0';
+        const API_URL = 'http://localhost:8080';
+
+        let provider, signer, account, todoContract, tokenContract;
+
+        const TODO_ABI = [
+            "function create(string) external",
+            "function toggleComplete(uint256) external",
+            "function deleteTodo(uint256) external",
+            "function getTodo(uint256) view returns (tuple(uint256,string,bool,uint256,bool,address))",
+            "function getAllTodos() view returns (tuple(uint256,string,bool,uint256,bool,address)[])",
+            "event TodoCreated(uint256 indexed, string, address indexed)",
+            "event TodoToggled(uint256 indexed, bool)",
+            "event RewardPaid(address indexed, uint256)"
+        ];
+
+        const TOKEN_ABI = [
+            "function balanceOf(address) view returns (uint256)",
+            "function approve(address,uint256) external returns (bool)",
+            "function allowance(address,address) view returns (uint256)"
+        ];
+
+        async function connectWallet() {
+            if (!window.ethereum) return alert('Install MetaMask!');
+            
+            provider = new ethers.BrowserProvider(window.ethereum);
+            signer = await provider.getSigner();
+            account = await signer.getAddress();
+            
+            todoContract = new ethers.Contract(TODO_ADDR, TODO_ABI, signer);
+            tokenContract = new ethers.Contract(TOKEN_ADDR, TOKEN_ABI, signer);
+            
+            document.getElementById('connectBtn').style.display = 'none';
+            document.getElementById('address').textContent = account.slice(0,6) + '...' + account.slice(-4);
+            document.getElementById('app').style.display = 'block';
+            
+            await refreshBalance();
+            await loadTodos();
+        }
+
+        async function refreshBalance() {
+            const bal = await tokenContract.balanceOf(account);
+            document.getElementById('balance').textContent = ethers.formatEther(bal);
+        }
+
+        async function createTodo() {
+    const text = document.getElementById('todoInput').value;
+    if (!text) return alert('Enter text');
+
+    try {
+        // Проверяем, что есть токены (хотя бы 1)
+        const bal = await tokenContract.balanceOf(account);
+        if (bal < ethers.parseEther('1')) {
+            return alert('Need at least 1 TODO token to create a task');
+        }
+
+        const tx = await todoContract.create(text);
+        await tx.wait();
+        
+        document.getElementById('todoInput').value = '';
+        await refreshBalance();
+        await loadTodos();
+    } catch (e) {
+        alert('Error: ' + (e.reason || e.message));
+    }
+}
+
+        async function toggleTodo(id) {
+            try {
+                const tx = await todoContract.toggleComplete(id);
+                await tx.wait();
+                await refreshBalance();
+                await loadTodos();
+            } catch (e) {
+                alert('Error: ' + (e.reason || e.message));
+            }
+        }
+
+        async function deleteTodo(id) {
+            try {
+                const tx = await todoContract.deleteTodo(id);
+                await tx.wait();
+                await loadTodos();
+            } catch (e) {
+                alert('Error: ' + (e.reason || e.message));
+            }
+        }
+
+        async function loadTodos() {
+            try {
+                const todos = await todoContract.getAllTodos();
+                const html = todos.map(t => `
+                    <div class="card todo-row">
+                        <div>
+                            <span class="${t[2] ? 'completed' : ''}">${t[1]}</span>
+                            <span class="status ${t[2] ? 'done' : 'open'}">${t[2] ? 'done' : 'open'}</span>
+                        </div>
+                        <div>
+                            ${!t[2] ? `<button onclick="toggleTodo(${t[0]})">✅</button>` : ''}
+                            <button class="danger" onclick="deleteTodo(${t[0]})">🗑</button>
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('content').innerHTML = html || '<p>No todos yet</p>';
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<p>Error loading</p>';
+            }
+        }
+
+        async function loadBalances() {
+            try {
+                const resp = await fetch(`${API_URL}/api/balances`);
+                const data = await resp.json();
+                const html = data.map(b => `
+                    <div class="card">
+                        <div class="address">${b.addr.slice(0,10)}...</div>
+                        <div class="balance">${ethers.formatEther(b.balance)} TODO</div>
+                    </div>
+                `).join('');
+                document.getElementById('content').innerHTML = html || '<p>No holders yet</p>';
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<p>API not available</p>';
+            }
+        }
+    </script>
+</body>
+</html>
